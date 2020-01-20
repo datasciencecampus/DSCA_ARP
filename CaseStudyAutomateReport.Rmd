@@ -1,0 +1,1471 @@
+---
+title: "Automated and reproducible reports in R: a case study"
+author: "Sonia Mazzi - Data Science Campus - ONS"
+date: "20/1/2020"
+output:
+  html_document:
+    fig_caption: false
+    fig_width: 11
+    fig_height: 6
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: true 
+    theme: cosmo
+---
+
+<script>
+   $(document).ready(function() {
+     $head = $('#header');
+     $head.prepend('<img src=\"dsclogo.png\" style=\"float: right;width: 150px;\"/>')
+   });
+</script>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Objectives and pre-requisites
+
+This case study is an example of a reproducible workflow.
+We will follow the data science workflow: reflect, collect data, prepare data, analyse, report. In tis case study, we will stay within a system, RStudio, for the entire flow.
+
+We would like to produce reports, by continent, on the status of HIV prevalence using the latest available data. 
+
+Using data from Gapminder on HIV prevalence by country and year, together with other geographical and economic information, we will produce a single 
+R markdown script that can generate reports on HIV prevalence for the different continents for different years and possibly using updated data sources. If new data arrives the same script can be used to update the report with the new information. The generated reports will be in HTML format as this is accessible and available to anyone with access to a web browser.
+ 
+ <br>
+
+The following are pre-requisites:
+
+* Know how to import data in Excel format into R (package `readxl`).
+
+* Understand the concept of tidy data and use the packages `tidyr` and `dplyr` for data wrangling.
+
+* Know how to use the package `ggplot2` for data visualisation.
+
+* Be familiar and at ease with literate programming in RStudio.
+
+All pre-requisites are taught at the required level in "Data Science with R".
+
+<br>
+
+The following skills are needed: (we will learn about these in this workshop)
+
+* Using R markdown: understanding the YAML header of a R Markdown document and how one can specify parameters here that the document will depend on. 
+For more information on R Markdown see [R Markdown: The definitive guide](https://bookdown.org/yihui/rmarkdown/html-document.html).
+
+
+* Using functional programming: we will learn how to use the function(al)s `map()` and `walk()` from the package `purrr` to apply a function to the entries of a vector or a list. This will be useful when we read the data in and also to generate all the reports, one per continent, at once. We also use conditional `if`-statements to add information to the report depending on the current parameters. `ifelse` statements are also used.
+
+
+*  We will build on your `ggplot2` skills by learning how to use the package `maps` together with `ggplot2` in order to produce maps with statistical information in them.
+
+* Be able to construct a simple function.
+
+# This document
+
+The current R markdown document is our "sandbox" where we experiment with the data and figure out how to achieve our objective: create a single piece of code useful to create a report for any continent and any year. The single code is in the file "hiv_report.Rmd".
+
+# Required libraries
+```{r libs, warning=FALSE, message=FALSE}
+library(readxl)
+library(readr)
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(stringr)
+library(maps)
+library(kableExtra)
+library(DT)
+```
+
+
+
+# Importing the data
+
+The data on HIV prevalence by country for this study is contained in the file "hiv_wb.xlsx".
+
+This is clearly an Excel file. Let us explore it first.
+
+Is this just one table or several tables arranged in a workbook?
+
+```{r chunk1}
+fn <- "hiv_wb.xlsx"
+excel_sheets(fn)
+```
+
+There are many sheets in this workbook. Seemingly one sheet per year.
+
+Let us explore the 2010 sheet (first sheet)
+
+```{r chunk2}
+hiv_2010 <- read_excel(fn, sheet=1)
+head(hiv_2010)
+```
+
+We can see that we should skip the first 4 rows (the first row was interpreted as the row containing the column names. The default in `read_excel()` is to do that). Also we would like to trim any leading and trailing white space. 
+
+Note that `hiv_prevalence`, `income` and `population` were read as character type.
+
+Let us read the data in again.
+
+```{r chunk3}
+hiv_2010 <- read_excel(fn, sheet = 1, skip = 4, trim_ws = TRUE)
+head(hiv_2010)
+```
+When we skip the first four rows the data reads in  well (as numeric).
+
+Now we will read in all worksheets and combine them into a single table, stacking the tables for each year. We use the `map_df()` function from the `purrr` package in the Tidyverse. 
+
+Note that for each sheet, entry in the vector `excel_sheets(fn)`, we apply the functions `read_excel()` followed by `mutate()` using `map_df()`. 
+
+The function `map_df()` applies a function for each of the values of a vector, list or data frame and binds and stores the result in a single data frame (`combined_data` in this case).
+
+In our case we have a vector, `excel_sheets(fn)` with the names of the sheets of the excel workbook named `fn`. The names of the sheets are the years. For each entry .x of the vector I wish to apply the function
+`read_excel(fn, sheet = .x, skip = 4, trim_ws = TRUE) %>% mutate(year = as.integer(.x))`
+which imports the sheet .x as a tibble and appends to it a new column called year, with numeric value .x. The successive tibbles are row-bound together to give the final output of one single tibble.
+
+```{r chunk4}
+#excel workbook file name
+fn <- "hiv_wb.xlsx"
+
+combined_data <- 
+  excel_sheets(fn) %>% 
+  map_df(~{read_excel(fn, sheet = .x, skip = 4, trim_ws = TRUE) %>% mutate(year = as.integer(.x))}) %>% 
+  select(country, year, everything()) #this shuffles columns
+```
+
+The "~" before the function that is applied in `map_df()` denotes an "anonymous function" in this case it denotes the function `some_function()`:
+
+```{r chunk5, eval=F}
+some_function <- function(.x){
+  read_excel(fn, sheet = .x, skip = 4, trim_ws = TRUE) %>% 
+    mutate(year = as.integer(.x))
+  }
+```
+
+By using the "~" we just need to specify the actions of the function, simplifying the notation.
+
+Alternatively, after creating the function `some_function()` we can obtain `combined_data` by
+
+```{r chunk6, eval=F}
+combined_data <- excel_sheets(fn) %>% 
+map_df(some_function)
+```
+
+
+Let us explore `combined_data`.
+
+```{r chunk7}
+head(combined_data)
+
+tail(combined_data)
+```
+
+Observational units are countries in the column `country`.
+
+Variables are  `year`, `hiv_prevalence`, `income` and `population`.
+
+This data set is in tidy format.
+
+# Data preparation
+
+
+We would like to add geographical information about the  countries, such as continent, region, standard three letter acronym, etc..
+
+The second sheet in the file "DataGeographiesGapminder.xlsx" contains the information.
+
+```{r chunk8}
+fng <- "DataGeographiesGapminder.xlsx"
+geo_dat <- read_excel(fng, sheet = 2)
+head(geo_dat, n = 15)
+```
+
+Only keep the needed columns: `geo`, `name` and `four_regions`, `Latitude` and `Longitude`. The last two will be named `cen_Latitude` and `cen_Longitude` and they provide the coordinates for the center of the country.
+
+```{r chunk9}
+geo_data <- geo_dat %>% 
+  select(country = name, geo, four_regions, cen_Latitude = Latitude, cen_Longitude = Longitude)
+
+head(geo_data)
+```
+
+```{r chunk10}
+hiv_full <- inner_join(combined_data, geo_data)
+```
+
+```{r chunk11}
+glimpse(filter(hiv_full, year == 2010))
+```
+
+
+Sort the columns, fixed variables first.
+
+```{r chunk12a}
+hiv_full <- hiv_full %>% 
+  select(country, geo, continent = four_regions, everything())
+
+glimpse(hiv_full)
+```
+
+<br>
+
+Let us capitalise the first letter of the continent names
+
+```{r chunk12b}
+hiv_full <- hiv_full %>% 
+  mutate(continent = str_replace(continent, "africa", "Africa")) %>%
+  mutate(continent = str_replace(continent, "europe", "Europe")) %>%
+  mutate(continent = str_replace(continent, "asia", "Asia")) %>%
+  mutate(continent = str_replace(continent, "americas", "Americas"))
+```
+
+
+
+We are interested in the percentual change of HIV prevalence from one year to the next, defined as 
+$prevalence/lag(prevalence) - 1$. So, we add the  column `pct_chg_prevalence` to `hiv_full`.
+
+```{r chunk13}
+  hiv_full <- hiv_full  %>% 
+  group_by(country) %>% 
+  arrange(year, .by_group = TRUE) %>%
+  mutate(pct_chg_prevalence = ifelse( lag(hiv_prevalence) != 0, ((hiv_prevalence/lag(hiv_prevalence) - 1) * 100), NA)) %>%
+  ungroup
+```
+
+
+```{r chunk14}
+glimpse(hiv_full)
+```
+
+<br>
+
+
+
+## map data
+
+
+We would like to plot continent maps and colour each country according to their level of HIV prevalence in the latest available year.
+
+To do this we will use the R package `maps`.
+
+Let us explore how we can combine the information in `hiv_full` with the geographical information in the `maps` package.
+
+The package `ggplot2` has a function `map_data()` which when applied to the string "world" will return a tibble with nearly 100,000 rows ready to use with `ggplot()`. Country borders are paths drawn using latitude and longitude pairs, grouped by a variable `group`. The order in the variable `order` must be followed.
+
+```{r chunk15}
+world_map <- map_data("world")
+glimpse(world_map)
+```
+We can plot a world map
+
+```{r chunk16}
+ggplot(world_map) +
+  geom_polygon(aes(x = long, y = lat, group = group), color = "black", fill = "gray") + 
+  coord_quickmap()
+```
+
+Suppose we don't want to show Antarctica.
+
+```{r chunk16a}
+world_map %>%
+  subset(region != "Antarctica") %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group), color = "black", fill = "gray") + 
+  coord_quickmap()
+```
+
+Let us get the African countries
+
+```{r chunk16b}
+african_countries <- hiv_full %>%
+  filter (continent == "Africa") %>%
+  select(country) %>%
+  unique() %>%
+  pull()
+
+world_map %>%
+  subset(region %in% african_countries) %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group), color = "brown", fill = "cornsilk") + 
+  coord_quickmap()
+```
+As we can see the list of countries in `hiv_full` doesn't coincide with the list of countries in `world_map`.
+
+Let us explore this and clean the data.
+
+**Africa**
+
+This is the list of African countries from the `hiv_full` object.
+
+```{r chunk17}
+african_countries_raw <- hiv_full %>% 
+  filter(continent == "Africa") %>%
+  pull(country) %>% 
+  unique() %>% 
+  sort()
+
+african_countries_raw
+```
+
+This is the list of countries listed in the maps package object world that match the list above
+
+```{r chunk18}
+africa_map <- map_data("world") %>% 
+  filter(region %in% african_countries_raw) %>% 
+  mutate(country = region) %>% 
+  pull(country) %>% 
+  unique() %>% 
+  sort()
+
+africa_map
+```
+
+The countries in  `hiv_full` which do not appear in `africa_map` are
+
+```{r chunk19}
+setdiff(african_countries_raw, africa_map)
+```
+
+Let us find out the names of countries in `world_map` which contain the string "Congo"
+
+```{r chunk20}
+world_map %>% 
+  mutate(aux = str_detect(region, "Congo")) %>% #aux is a new column with logical entries T or F
+  filter(aux == T) %>% # retain the rows where aux is T
+  select(region) %>% # keep the column  with country names
+  unique() # eliminate duplicates
+```
+
+Let us find out the names of countries in `world_map` which contain the string "Ivo" (we are looking for what Cote d'Ivoire could be in `world_map`)
+
+```{r chunk21}
+world_map %>% 
+  mutate(aux = str_detect(region, "Ivo")) %>% #aux is a new column with logical entries T or F
+  filter(aux == T) %>% # retain the rows where aux is T
+  select(region) %>% # keep the column  with country names
+  unique() # eliminate duplicates
+```
+
+In the list of contries of world_map (`africa_map`),
+"Democratic Republic of the Congo" is "Congo, Dem. Rep."
+"Republic of Congo" is "Congo, Rep.",     
+"Ivory Coast" is "Cote d'Ivoire".
+
+Let us change these names in `hiv_full`.
+
+
+```{r chunk22}
+diff_names <- setdiff(african_countries_raw, africa_map)
+new_names <- c("Democratic Republic of the Congo", "Republic of Congo", "Ivory Coast")
+
+for (i in 1:length(diff_names)){
+ hiv_full <- hiv_full %>%
+   mutate(country = str_replace(country, diff_names[i], new_names[i])) 
+}
+```
+
+One country is missing from `hiv_full` which is in `world_map`, namely "Western Sahara".
+Libya has missing data for hiv prevalence so we will copy the data for Lybia and modify the `geo` (geo for Western Sahara is "esh"), `income`, `population`, and `country`.
+
+```{r chunk23}
+western_sahara <- hiv_full %>% 
+  filter(country == "Libya") %>%
+  mutate(geo = str_replace(geo, "lby", "esh")) %>%
+  mutate(income = NA) %>%
+  mutate(population = NA) %>%
+  mutate(cen_Latitude = NA) %>%
+  mutate(cen_longitude = NA) %>%
+  mutate(country = str_replace(country, "Libya", "Western Sahara"))
+```
+
+Now let us add the data for Western Sahara to `hiv_full`.
+
+```{r chunk24}
+hiv_full <- bind_rows(hiv_full, western_sahara)
+```
+
+
+
+**Europe**
+
+This is the list of European countries from the `hiv_full` object.
+
+```{r chunk25}
+european_countries_raw <- hiv_full %>% 
+  filter(continent == "Europe") %>%
+  pull(country) %>% 
+  unique() %>% 
+  sort()
+european_countries_raw
+```
+
+This is the list of countries listed in the maps package object `world` that matches the list above
+
+```{r chunk26}
+europe_map <- map_data("world") %>% 
+  filter(region %in% european_countries_raw) %>% 
+  mutate(country = region) %>% 
+  pull(country) %>% 
+  unique() %>% 
+  sort()
+
+europe_map
+```
+
+The countries in  `hiv_full` which do not appear in `europe_map` are
+
+```{r chunk27}
+setdiff(european_countries_raw, europe_map)
+```
+
+"Holy See" is "Vatican" in the list of countries of the world object. Similarly, "Macedonia, FYR" is "Macedonia", "Slovak Republic" is "Slovakia" and "United Kingdom" is "UK". Let us change these names in `hiv_full`.
+
+```{r chunk28}
+diff_names <- setdiff(european_countries_raw, europe_map)
+new_names <- c("Vatican", "Macedonia", "Slovakia", "UK")
+for (i in 1:length(diff_names)){
+ hiv_full <- hiv_full %>%
+   mutate(country = str_replace(country, diff_names[i], new_names[i])) 
+}
+```
+
+Let us check if we are missing a country in `hiv_full`.
+
+```{r chunk28a}
+european_countries <- hiv_full %>%
+  filter (continent == "Europe") %>%
+  select(country) %>%
+  unique() %>%
+  pull()
+
+world_map %>%
+  subset(region %in% european_countries) %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group), color = "violet", fill = "cornsilk") + 
+  coord_quickmap()
+```
+
+Russia is too big, so let us take Russia from the map to get more detail on Western Europe.
+
+```{r chunk28b}
+world_map %>%
+  filter(region %in% european_countries, region != "Russia") %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group), color = "black", fill = "blue") + 
+  coord_quickmap()
+```
+
+Kosovo is missing from `hiv_full` Let us add it. "xkx" is its three letter acronym.
+
+```{r chunk29}
+#add Kosovo
+kosovo <- hiv_full %>% 
+  filter(country == "Libya") %>%
+  mutate(geo = str_replace(geo, "lby", "xkx")) %>%
+  mutate(continent == "Europe") %>%
+  mutate(income = NA) %>%
+  mutate(population = NA) %>%
+  mutate(cen_Latitude = NA) %>%
+  mutate(cen_longitude = NA) %>%
+  mutate(country = str_replace(country, "Libya", "Kosovo"))
+```
+
+Now let us add the data for Kosovo to `hiv_full`.
+
+```{r chunk30}
+hiv_full <- bind_rows(hiv_full, kosovo)
+```
+
+
+**The Americas**
+
+This is the list of countries of the Americas from the `hiv_full` object.
+
+```{r chunk32}
+american_countries_raw <- hiv_full %>% 
+  filter(continent == "Americas") %>%
+  pull(country) %>% 
+  unique() %>%
+  sort()
+american_countries_raw
+```
+
+This is the list of countries listed in the maps package object world that match the list above
+
+```{r chunk33}
+america_map <- map_data("world") %>% 
+  filter(region %in% american_countries_raw) %>% 
+  mutate(country = region) %>% pull(country) %>% 
+  unique() %>% 
+  sort()
+
+america_map
+```
+
+The countries in  `hiv_full` which do not appear in `america_map` are
+
+```{r chunk34}
+setdiff(american_countries_raw, america_map)
+```
+
+"Antigua and Barbuda" is "Antigua" in the list of countries of the world object. Similarly, "St. Kitts and Nevis" is "Saint Kitts", "St. Lucia" is "Saint Lucia" and "St. Vincent and the Grenadines" is "Saint Vincent", "Trinidad and Tobago" is "Trinidad" and "United States" is "USA". Let us change these names in `hiv_full`.
+
+```{r chunk35}
+diff_names <- setdiff(american_countries_raw, america_map)
+new_names <- c("Antigua", "Saint Kitts", "Saint Lucia", "Saint Vincent", "Trinidad", "USA")
+for (i in 1:length(diff_names)){
+ hiv_full <- hiv_full %>%
+   mutate(country = str_replace(country, diff_names[i], new_names[i])) 
+}
+```
+
+Let us check we are not missing any countries
+
+```{r chunk35a}
+american_countries <- hiv_full %>%
+  filter (continent == "Americas") %>%
+  select(country) %>%
+  unique() %>%
+  pull()
+
+world_map %>%
+  subset(region %in% american_countries) %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group), color = "violet", fill = "cornsilk") + 
+  coord_quickmap()
+```
+Let us bound the longitude to span between -200 and -20 degrees.
+
+```{r chunk35b}
+world_map %>%
+  filter(region %in% american_countries, long <= -20) %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group), color = "black", fill = "red") + 
+  coord_quickmap()
+```
+
+There seem to be no "holes" and that all countries are present.
+
+
+**Asia**
+
+This is the list of countries of Asia from the `hiv_full` object.
+
+```{r chunk36}
+asian_countries_raw <- hiv_full %>% 
+  filter(continent == "Asia") %>%
+  pull(country) %>% 
+  unique %>% 
+  sort()
+
+asian_countries_raw
+```
+
+This is the list of countries listed in the maps package object world that match the list above
+
+```{r chunk37}
+asia_map <- map_data("world") %>% 
+  filter(region %in% asian_countries_raw) %>% 
+  mutate(country=region) %>% pull(country) %>% 
+  unique() %>% 
+  sort()
+
+asia_map
+```
+
+The countries in  `hiv_full` which do not appear in `america_map` are
+
+```{r chunk38}
+setdiff(asian_countries_raw, asia_map)
+```
+
+
+
+"Kyrgyz Republic" is "Kyrgyzstan" in the list of countries of the world object. Similarly, "Lao" is "Laos", "Micronesia, Fed. Sts." is 
+"Micronesia". "Tuvalu" and "Hong Kong, China" are not listed in maps. Let us change these names in `hiv_full`.
+
+```{r chunk39}
+diff_names <- setdiff(asian_countries_raw, asia_map)
+new_names <- c("Hong Kong", "Kyrgyzstan", "Laos", "Micronesia", "Tuvalu")
+for (i in 1:length(diff_names)){
+ hiv_full <- hiv_full %>%
+   mutate(country = str_replace(country, diff_names[i], new_names[i])) 
+}
+```
+
+
+Let us check we are not missing any countries
+
+```{r chunk39a}
+asian_countries <- hiv_full %>%
+  filter (continent == "Asia") %>%
+  select(country) %>%
+  unique() %>%
+  pull()
+
+world_map %>%
+  subset(region %in% asian_countries) %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group), color = "black", fill = "green") + 
+  coord_quickmap()
+```
+Let us bound longitude to be greater than or equal to 20 (and ignore some of the polynesian islands).
+
+```{r chunk40}
+world_map %>%
+  filter(region %in% asian_countries, long >= 20) %>%
+  ggplot() +
+  geom_polygon(aes(x = long, y = lat, group = group), color = "black", fill = "green") + 
+  coord_quickmap()
+```
+It seems that we have everything.
+
+
+<br>
+<br>
+<br>
+
+
+We have a full, tidy and clean data set now, ready for exploration. 
+
+Save the data as  "hiv_for_report.csv".
+
+```{r chunk41, eval=FALSE}
+write_csv(hiv_full, "hiv_for_report.csv")
+```
+
+
+# Plots
+
+In this project the analysis stage will take the form of the production of meaningful plots that show features of the data.
+We would like to produce one report per continent.
+
+We want to produce the following plots:
+
+* A plot of `hiv_prevalence` vs `income` (GDP per capita) for the latest available year.
+
+* A time plot of `hiv_prevalence` percentual change since 2000, to see if the rates of HIV prevalence are diminishing. We will do this only for countries with unusually high levels if `hiv_prevalence`.
+
+* A map of the continent being referred to with countries coloured according to the HIV prevalence level in the latest available year.
+
+
+
+## Africa
+
+```{r chunk42}
+current_continent <- "Africa"
+latest_year <- 2010
+```
+
+We define a level of `hiv_prevalence` above which we say `hiv_prevalence` is exceptionally large for the region
+
+```{r chunk43}
+hi_hiv <- ifelse(current_continent == "Africa", 10,
+                 ifelse(current_continent == "Europe", 0.5, 
+                        ifelse(current_continent == "Americas", 1, 
+                         ifelse(current_continent == "Asia", 0.5, NA))))
+```       
+
+This is the data for countries with high hiv prevalence (greater than 10%)
+
+```{r chunk44}
+hlhiv <- hiv_full %>% 
+  filter(continent == current_continent, year == latest_year, hiv_prevalence >= hi_hiv) %>% 
+  drop_na()
+hlhiv
+```
+
+Now, let's plot HIV prevalence vs. GDP per capita.
+
+```{r chunk45, warning=F}
+datos <- hiv_full %>% 
+  filter(continent == current_continent, year == latest_year) 
+#
+ggplot(datos, aes(x = income, y = hiv_prevalence)) +
+  geom_point(aes(size = population), alpha = 0.5) +
+  geom_text_repel(data = hlhiv , aes(label = country), col = "black", size = 3) +
+  theme(axis.text.x = element_text(color = "black", size = 5, angle = 0)) +
+  labs(x = "Income", y = "HIV prevalence")
+```
+To avoid defining the object `datos` use the pipe operator %>%
+
+
+```{r chunk46, warning=F}
+hiv_full %>% 
+  filter(continent == current_continent, year == latest_year) %>% 
+  ggplot(aes(x = income, y = hiv_prevalence)) +
+  geom_point(aes(size = population), alpha = 0.5) +
+  #geom_text_repel(data = hhiv, colour = "black", force = 50, segment.colour = "grey", size = 3) +
+  geom_text_repel(data = hlhiv , aes(label = country), col = "black", size = 3) +
+  theme(axis.text.x = element_text(color = "black", size = 5, angle = 0)) +
+  labs(x = "Income", y = "HIV prevalence")
+```
+
+Now let us stretch the x-axis at the start using a logarithmic scale.
+
+```{r chunk47, warning=F}
+hiv_full %>% 
+  filter(continent == current_continent, year == latest_year) %>% 
+  ggplot(aes(x = income, y = hiv_prevalence)) +
+  geom_point(aes(size = population), alpha = 0.5) +
+  scale_x_log10() + #use logarithmic scale for x axis
+  #geom_text_repel(data = hhiv, colour = "black", force = 50, segment.colour = "grey", size = 3) +
+  geom_text_repel(data = hlhiv , aes(label = country), col = "black", size = 3) +
+  theme(axis.text.x = element_text(color = "black", size = 5, angle = 0)) +
+  labs(x = "Income (log10)", y = "HIV prevalence")
+```
+
+
+
+Now, plot the percentual change in HIV prevalence with respect to the previous year, only from 2000 on and for countries with an elevated HIV prevalence ($\geq$ 10).
+
+```{r chunk48, warning = FALSE}
+datos <- hiv_full %>% filter(hiv_prevalence >= 10, year >= 2000)
+
+hiv_pct_chg_plot <- ggplot(datos, aes(x = year, y = pct_chg_prevalence, color = country)) +
+  geom_line() +
+  geom_point(aes(size = hiv_prevalence), alpha = 0.2) +
+  labs(x = "Year", y = "% change (from previous year) in HIV prevalence") +
+  scale_x_continuous(limits = c(1999, 2010)) +
+  geom_text_repel(data = filter(datos, year == 2000) , aes(label = geo, color = country), size = 3, direction = "y", nudge_x = -1.2)
+```
+
+There is missing data for Mozambique until year 2002. So we must add the country geo by hand.
+To do this we will first create an object with the plot, add a layer to it and then print it.
+
+This time we will use the pipe operator %>% to avoid creating the object `datos`.
+
+```{r chunk49, warning = FALSE}
+hiv_pct_chg_plot <- hiv_full %>% 
+  filter(hiv_prevalence >= 10, year >= 2000) %>%
+  ggplot(aes(x = year, y = pct_chg_prevalence, color = country)) +
+  geom_line() +
+  geom_point(aes(size = hiv_prevalence), alpha = 0.2) +
+  labs(x = "Year", y = "% change (from previous year) in HIV prevalence") +
+  scale_x_continuous(limits = c(1999, 2010)) +
+  geom_text_repel(data = filter(datos, year == 2000) , aes(label=geo, color = country), size = 3, direction = "y", nudge_x = -1.2) + 
+  geom_hline(yintercept = 0) +
+  guides(size = guide_legend(title = "HIV prevalence", order = 1)) 
+
+hiv_pct_chg_plot
+```
+
+Now we add a layer with the label for Mozambique and print the plot
+
+```{r chunk50}
+hiv_pct_chg_plot <- hiv_pct_chg_plot + 
+  geom_text_repel(data = filter(datos, year == 2002, country == "Mozambique") , aes(label = geo, color = country), size = 3, direction = "y", nudge_x = -1.2)
+hiv_pct_chg_plot
+```
+
+
+<br>
+
+<br>
+
+Now we plot a map of Africa with country borders and colour each country according to a colour scale which depends on the level of HIV prevalence. 
+
+```{r chunk51, message=F, warning=F}
+hiv_latest_year <- hiv_full %>% 
+  filter(year == latest_year, continent == current_continent)
+#
+current_continent_countries <- hiv_latest_year %>% 
+  pull(country)
+#
+hiv_data <- map_data("world") %>% 
+  filter(region %in% current_continent_countries) %>% 
+  mutate(country = region) %>% 
+  left_join(hiv_latest_year)
+#
+hiv_geos <- hiv_data %>% 
+  select(geo, cen_Latitude, cen_Longitude) %>% 
+  group_by(geo) %>% 
+  unique()
+# 
+ggplot(hiv_data) + 
+  geom_polygon(aes(x = long, y = lat, fill = hiv_prevalence, group = group, colour = "")) + 
+  coord_quickmap() +
+  scale_fill_gradient2(low = "brown3", mid = "cornsilk1", high = "turquoise4", limits = c(0,25), na.value = "grey") +
+  guides(fill = guide_legend(title = "HIV prevalence", order = 1)) + #change the title of the legend for hiv prevalence and make it the first legend to appear
+  scale_colour_manual(values = NA) + 
+  guides(colour = guide_legend("No data", override.aes = list(fill = "grey"), order = 2)) + #this is to add a legend for missing values
+  theme_void()+ # this eliminates the grid in the background and axis
+  geom_text_repel(data = hiv_geos, aes(x = cen_Longitude, y = cen_Latitude, label = geo), size = 2.5, direction = "x") 
+```
+
+We do the same for the other three continents
+
+## Europe
+
+Let us see if we can repeat the process applied to Africa for Europe
+
+```{r chunk52}
+current_continent <- "Europe"
+latest_year <- 2010
+```
+
+These are countries with high hiv prevalence (greater than 0.5%)
+
+```{r chunk53}
+hlhiv <- hiv_full %>% 
+  filter(continent == current_continent, year == latest_year, hiv_prevalence >= 0.5)
+hlhiv
+```
+
+Plot HIV prevalence vs. income.
+
+```{r chunk54, warning=F}
+hiv_full %>% 
+  filter(continent == current_continent, year == latest_year) %>% 
+  ggplot(aes(x = income, y = hiv_prevalence)) + 
+  geom_point(aes(size = population), alpha = 0.5) +
+  geom_text_repel(data = hlhiv , aes(label = country), col = "black", size = 3) +
+  theme(axis.text.x = element_text(color = "black", size = 5, angle = 0)) +
+  scale_x_log10() +
+  labs(x = "Income(log10)", "HIV prevalence")
+```
+
+
+
+
+```{r chunk55, warning = FALSE}
+datos <- hiv_full %>% filter(continent == current_continent, hiv_prevalence >= 0.5, year >= 2000)
+
+ggplot(datos, aes(x = year, y = pct_chg_prevalence, color = country)) +
+  geom_line() +
+  geom_point(aes(size = hiv_prevalence), alpha = 0.2) +
+  labs(x = "Year", y = "% change (from previous year) in HIV prevalence") +
+  #scale_y_continuous(limits = c(-8, 10))  +
+  scale_x_continuous(limits = c(1999, 2010)) +
+  geom_text_repel(data = filter(datos, year == 2000), aes(label = geo), color = "black", size = 3, direction = "y", nudge_x = -1.2) +
+  geom_hline(yintercept = 0)
+```
+
+We see that Russia and Portugal have missing data until 2001. So, these country labels need to be manually added as well.
+
+```{r chunk56, warning = FALSE}
+datos <- hiv_full %>% 
+  filter(continent == current_continent, hiv_prevalence >= 0.5, year >= 2000)
+
+pct_chg_plot <-  ggplot(datos, aes(x = year, y = pct_chg_prevalence, color = country)) +
+  geom_line() +
+  geom_point(aes(size = hiv_prevalence), alpha = 0.2) +
+  labs(x = "Year", y = "% change (from previous year) in HIV prevalence") +
+  #scale_y_continuous(limits = c(-8, 10))  +
+  scale_x_continuous(limits = c(1999, 2010)) +
+  geom_text_repel(data = filter(datos, year == 2000) , aes(label = geo), color = "black", size = 3, direction = "y", nudge_x = -1.2)
+```
+
+```{r chunk57}
+pct_chg_plot + geom_text_repel(data = filter(datos, year == 2001, country %in% c("Russia", "Portugal")) , aes(label = geo), color = "black", size = 3, direction = "y", nudge_x = -1.2)
+```
+
+**The map**
+
+```{r chunk58, message=F, warning=F}
+hiv_latest_year <- hiv_full %>% 
+  filter(year == latest_year, continent == current_continent)
+#
+current_continent_countries <- hiv_latest_year %>% 
+  pull(country)
+#
+hiv_data <- map_data("world") %>% 
+  filter(region %in% current_continent_countries) %>% 
+  mutate(country = region) %>% 
+  left_join(hiv_latest_year)
+#
+hiv_geos <- hiv_data %>% 
+  select(geo, cen_Latitude, cen_Longitude) %>% 
+  group_by(geo) %>% 
+  unique()
+# 
+ggplot(hiv_data) + 
+  geom_polygon(aes(x = long, y = lat, fill = hiv_prevalence, group = group, colour = "")) + 
+  coord_quickmap() +
+  scale_fill_gradient2(low = "brown3", mid = "cornsilk1", high = "turquoise4", limits = c(0,1.3), na.value = "grey") +
+  guides(fill = guide_legend(title = "HIV prevalence", order = 1)) + #change the title of the legend for hiv prevalence and make it the first legend to appear
+  scale_colour_manual(values = NA) + 
+  guides(colour = guide_legend("No data", override.aes = list(fill = "grey"), order = 2)) + #this is to add a legend for missing values
+ # theme_void()+ # this eliminates the grid in the background and axis
+  geom_text_repel(data = hiv_geos, aes(x = cen_Longitude, y = cen_Latitude, label = geo), size = 3, direction = "x") 
+```
+
+
+
+Russia has missing data for  2010 and it would be interesting to see the map without Russia. Note we limit the latitudes to 72 degrees north so that Svalbard (part of Norway) is not included, for better detail of the map.
+
+
+Western Europe (Europe without Russia)
+
+```{r chunk59, message=F, warning=F}
+hiv_latest_year <- hiv_full %>% 
+  filter(year == latest_year, continent == current_continent, country != "Russia")
+#
+current_continent_countries <- hiv_latest_year %>% 
+  pull(country)
+#
+hiv_data <- map_data("world") %>% 
+  filter(region %in% current_continent_countries, lat < 72) %>% 
+  mutate(country = region) %>% 
+  left_join(hiv_latest_year)
+#
+hiv_geos <- hiv_data %>% 
+  filter(geo != "rus") %>%
+  select(geo, cen_Latitude, cen_Longitude) %>% 
+  group_by(geo) %>% 
+  unique()
+# 
+ggplot(hiv_data) + 
+  geom_polygon(aes(x = long, y = lat, fill = hiv_prevalence, group = group, colour = "")) + 
+  coord_quickmap() +
+  scale_fill_gradient2(low = "brown3", mid = "cornsilk1", high = "turquoise4", limits = c(0,1.3), na.value = "grey") +
+  guides(fill = guide_legend(title = "HIV prevalence", order = 1)) + #change the title of the legend for hiv prevalence and make it the first legend to appear
+  scale_colour_manual(values = NA) + 
+  guides(colour = guide_legend("No data", override.aes = list(fill = "grey"), order = 2)) + #this is to add a legend for missing values
+  theme_void()+ # this eliminates the grid in the background and axis
+  geom_text_repel(data = hiv_geos, aes(x = cen_Longitude, y = cen_Latitude, label = geo), size = 3, direction = "x") 
+```
+
+## Americas
+
+```{r chunk60}
+current_continent <- "Americas"
+latest_year <- 2010
+```
+
+These are countries with high hiv prevalence (greater than 0.5%)
+
+```{r chunk61}
+hlhiv <- hiv_full %>% 
+  filter(continent == current_continent, year == latest_year, hiv_prevalence >= 1)
+
+hlhiv
+```
+
+```{r chunk62}
+hiv_full %>% filter(continent == current_continent, year == latest_year) %>% 
+  ggplot(aes(x = income, y = hiv_prevalence)) +
+  geom_point(aes(size = population), alpha = 0.5) +
+  scale_x_log10() +
+  geom_text_repel(data = hlhiv , aes(label=country), col = "black", size = 3) +
+  theme(axis.text.x = element_text(color = "black", size = 5, angle = 0)) +
+  labs(x = "Income(log10)", y = "HIV prevalence")
+```
+
+```{r chunk63, warning = FALSE}
+datos <- hiv_full %>% filter(continent == current_continent, hiv_prevalence >= 1, year >= 2000)
+
+ggplot(datos, aes(x = year, y = pct_chg_prevalence, color = country)) +
+  geom_line() +
+  geom_point(aes(size = hiv_prevalence), alpha = 0.2) +
+  labs(x = "Year", y = "% change (from previous year) in HIV prevalence") +
+  #scale_y_continuous(limits = c(-8, 10))  +
+  scale_x_continuous(limits = c(1999, 2010)) +
+  geom_text_repel(data = filter(datos, year == 2000) , aes(label = geo, color = country), size = 3, direction = "y", nudge_x = -1.2)
+```
+
+
+```{r chunk64, message=F, warning=F}
+hiv_latest_year <- hiv_full %>% 
+  filter(year == latest_year, continent == current_continent)
+#
+current_continent_countries <- hiv_latest_year %>% 
+  pull(country)
+#
+hiv_data <- map_data("world") %>% 
+  filter(region %in% current_continent_countries) %>% 
+  mutate(country = region) %>% 
+  left_join(hiv_latest_year)
+#
+hiv_geos <- hiv_data %>% 
+  select(geo, cen_Latitude, cen_Longitude) %>% 
+  group_by(geo) %>% 
+  unique()
+# 
+ggplot(hiv_data) + 
+  geom_polygon(aes(x = long, y = lat, fill = hiv_prevalence, group = group, colour = "")) + 
+  coord_quickmap() +
+  scale_fill_gradient2(low = "brown3", mid = "cornsilk1", high = "turquoise4", limits = c(0,3), na.value = "grey") +
+  guides(fill = guide_legend(title = "HIV prevalence", order = 1)) + #change the title of the legend for hiv prevalence and make it the first legend to appear
+  scale_colour_manual(values = NA) + 
+  guides(colour = guide_legend("No data", override.aes = list(fill = "grey"), order = 2)) + #this is to add a legend for missing values
+ # theme_void()+ # this eliminates the grid in the background and axis
+  geom_text_repel(data = hiv_geos, aes(x = cen_Longitude, y = cen_Latitude, label = geo), size = 3, direction = "x") 
+```
+Let us bound the map to extend from -170 to -20 degrees of longitude
+
+
+```{r chunk65, message=F, warning=F}
+hiv_latest_year <- hiv_full %>% 
+  filter(year == latest_year, continent == current_continent)
+#
+current_continent_countries <- hiv_latest_year %>% 
+  pull(country)
+#
+hiv_data <- map_data("world") %>% 
+  filter(region %in% current_continent_countries, long <= -20, long >= -170) %>% 
+  mutate(country = region) %>% 
+  left_join(hiv_latest_year)
+#
+hiv_geos <- hiv_data %>% 
+  select(geo, cen_Latitude, cen_Longitude) %>% 
+  group_by(geo) %>% 
+  unique()
+# 
+ggplot(hiv_data) + 
+  geom_polygon(aes(x = long, y = lat, fill = hiv_prevalence, group = group, colour = "")) + 
+  coord_quickmap() +
+  scale_fill_gradient2(low = "brown3", mid = "cornsilk1", high = "turquoise4", limits = c(0,3), na.value = "grey") +
+  guides(fill = guide_legend(title = "HIV prevalence", order = 1)) + #change the title of the legend for hiv prevalence and make it the first legend to appear
+  scale_colour_manual(values = NA) + 
+  guides(colour = guide_legend("No data", override.aes = list(fill = "grey"), order = 2)) + #this is to add a legend for missing values
+ # theme_void()+ # this eliminates the grid in the background and axis
+  geom_text_repel(data = hiv_geos, aes(x = cen_Longitude, y = cen_Latitude, label = geo), size = 3, direction = "x") 
+```
+
+
+The Caribbean is the area with the highest prevalence of HIV. So, let us zoom in to the region to see more detail.
+
+
+```{r chunk66, message=F, warning=F}
+#the Caribean
+hiv_latest_year <- hiv_full %>% 
+  filter(year == latest_year, continent == current_continent)
+#
+current_continent_countries <- hiv_latest_year %>% 
+  pull(country)
+#
+hiv_data <- map_data("world") %>% 
+  filter(region %in% current_continent_countries, long <= -50, long >= -95, lat >= 0, lat <= 25) %>% 
+  mutate(country = region) %>% 
+  left_join(hiv_latest_year)
+#
+hiv_geos <- hiv_data %>% 
+  filter(cen_Longitude <= -50, cen_Longitude >= -95, cen_Latitude >= 0, cen_Latitude <= 25) %>%
+  select(geo, cen_Latitude, cen_Longitude) %>% 
+  group_by(geo) %>% 
+  unique()
+# 
+ggplot(hiv_data) + 
+  geom_polygon(aes(x = long, y = lat, fill = hiv_prevalence, group = group, colour = "")) + 
+  coord_quickmap() +
+  scale_fill_gradient2(low = "brown3", mid = "cornsilk1", high = "turquoise4", limits = c(0,3), na.value = "grey") +
+  guides(fill = guide_legend(title = "HIV prevalence", order = 1)) + #change the title of the legend for hiv prevalence and make it the first legend to appear
+  scale_colour_manual(values = NA) + 
+  guides(colour = guide_legend("No data", override.aes = list(fill = "grey"), order = 2)) + #this is to add a legend for missing values
+ # theme_void()+ # this eliminates the grid in the background and axis
+  geom_text_repel(data = hiv_geos, aes(x = cen_Longitude, y = cen_Latitude, label = geo), size = 3, direction = "x") 
+```
+
+
+
+
+
+
+
+
+## Asia
+
+```{r chunk67}
+current_continent <- "Asia"
+latest_year <- 2010
+```
+
+These are countries with high hiv prevalence (greater than 5%)
+
+```{r chunk68}
+hlhiv <- hiv_full %>% 
+  filter(continent == current_continent, year == latest_year, hiv_prevalence >= 0.5)
+
+hlhiv
+```
+
+```{r chunk69, warning=F}
+hiv_full %>% filter(continent == current_continent, year == latest_year) %>% 
+  ggplot(aes(x = income, y = hiv_prevalence)) +
+  geom_point(aes(size = population), alpha = 0.5) +
+  #geom_text_repel(data = hhiv, colour = "black", force = 50, segment.colour = "grey", size = 3) +
+  geom_text_repel(data = hlhiv , aes(label = country), col = "black", size = 3) +
+  theme(axis.text.x = element_text(color = "black", size = 5, angle = 0)) +
+  scale_x_log10() +
+  labs(x = "Income(log10)", y = "HIV prevalence")
+```
+
+
+
+```{r chunk70, warning = FALSE}
+datos <- hiv_full %>% filter(continent == current_continent, hiv_prevalence >= 0.5, year >= 2000)
+
+ggplot(datos, aes(x = year, y = pct_chg_prevalence, color = country)) +
+  geom_line() +
+  geom_point(aes(size = hiv_prevalence), alpha = 0.2) +
+  labs(x = "Year", y = "% change (from previous year) in HIV prevalence") +
+  #scale_y_continuous(limits = c(-8, 10))  +
+  scale_x_continuous(limits = c(1999, 2010)) +
+  geom_text_repel(data = filter(datos, year == 2000) , aes(label = geo, color = country), size = 3, direction = "y", nudge_x = -1.2)
+```
+
+Note that we need to set the maximum and minimum longitudes and latitudes to have a centered map. Not doing so includes too much white space which distorts the map.
+  
+
+```{r chunk71}
+hiv_latest_year <- hiv_full %>% 
+  filter(year == latest_year, continent == current_continent)
+
+current_continent_countries <- hiv_latest_year %>% 
+  pull(country)
+#
+max_lat <- 100
+max_long <- 185 
+min_lat <- -45
+min_long <- 0
+#
+hiv_geos <- hiv_data %>% 
+  filter(region %in% current_continent_countries) %>%
+  select(geo, cen_Latitude, cen_Longitude) %>% 
+  group_by(geo) %>% 
+  unique()
+#
+datos_map <- map_data("world") %>% 
+  filter(region %in% current_continent_countries, lat <= max_lat, lat >= min_lat, long <= max_long, long >= min_long) %>%
+  mutate(country = region) %>% left_join(hiv_latest_year)
+
+ggplot(data = datos_map) + 
+  geom_polygon(aes(x = long, y = lat, fill = hiv_prevalence, group = group, color = "")) + 
+  coord_quickmap() +
+  scale_fill_gradient2(low = "brown3", mid = "cornsilk1", high = "turquoise4", limits = c(0, 1.25), na.value = "grey") +
+  scale_colour_manual(values = NA) +              
+  guides(colour = guide_legend("No data", override.aes = list(fill = "grey"), order = 2)) +
+  guides(fill = guide_legend(title = "HIV prevalence", order = 1)) +
+  theme_void() +
+  geom_text_repel(data = hiv_geos, aes(x = cen_Longitude, y = cen_Latitude, label = geo), size = 3, direction = "x") 
+```
+
+# Tables
+
+## Static tables
+
+Use the packages `kable` and `kableExtra`. See https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
+
+
+```{r chunk72}
+table1 <- hiv_full %>% 
+  filter(year >= 2000, year <= latest_year, continent == "Africa") %>%
+  select(country, year, hiv_prevalence) %>%
+  pivot_wider(names_from = year, values_from = hiv_prevalence)
+
+table1
+```
+
+```{r chunk73}
+table1 %>% kable() %>% kable_styling(bootstrap_options = c("striped", "hover"), fixed_thead = TRUE)
+```
+
+If the table is too long
+
+```{r chunk74}
+table1 %>% kable() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), fixed_thead = TRUE) %>%
+  scroll_box(width = "100%", height = "200px")
+```
+
+## Interactive tables
+
+Use the package `DT`
+
+
+```{r chunk75}
+datatable(table1, rownames = F)
+```
+
+
+
+# Report production
+
+Now we turn to the single script for all continents in the file "hiv_report.Rmd".
+
+## The YAML header
+
+At the very top of any R markdown document we find the YAML header, a series of statements enclosed by "---". These statements determine the general layout and global features of the document.
+
+Let us look at the YAML header of this document
+
+```{r eval=FALSE}
+---
+title: "Automated and reproducible reports in R: a case study"
+author: "Sonia Mazzi - Data Science Campus - ONS"
+date: "6/3/2019"
+output:
+  html_document:
+    fig_caption: false
+    fig_width: 11
+    fig_height: 6
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: true 
+    theme: cosmo
+---
+```
+
+Experiment changing the title, author and date
+
+In this case, the output we want after rendering the document (by clicking on the "Knit" icon) is an HTML document.
+`toc` stands for table of contents (we are stating we want a table of contents), that the maximum depth to be shown in the table of contents is 2 (sections and sub-sections, please avoid sub-sub-sectioning and do not use sub-sub-sub-sections!), in this case the table of contents will be a floating object to the left of the document (as you scroll down, the table of contents "floats" i.e. stays in place), we want numbered sections and the global style is in `theme`, in this case "cosmo" (for other free themes see https://bootswatch.com/3/).
+
+Experiment a bit further using other themes (e.g. "united" or "superhero").
+
+## Parameterised documents
+
+<br>
+
+Sometimes we want to produce the same document/report for different values of certain inputs (parameters). For example, running reports for different geographical regions and/or different time periods, etc.
+
+R Markdown parameter names, types, and default values are declared in the YAML header. 
+
+Parameterized reports are a new feature of R Markdown and therefore require very recent versions of the knitr (v1.11) and rmarkdown (v0.8) packages. You can install the most up to date versions with the following command:
+
+```{r chunk76, eval=F}
+install.packages(c("knitr", "rmarkdown"))
+```
+
+<br>
+
+The YAML header of "hiv_report.Rmd" is
+
+```{r eval=F}
+---
+params: 
+  current_continent: Americas
+  year: 2010
+  data_file: hiv_wb_new.xlsx
+title: "**`r paste0('Report on HIV prevalence in ', params$current_continent, ' - ', params$year)`**"
+author: Sonia Mazzi - Data Science Campus
+description: "An example of a reproducible report, from data importing, tidying, and cleaning, analysing to publishing with rmarkdown"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  html_document:
+    theme: cosmo
+    toc: TRUE
+    toc_float: TRUE
+    highlight: haddock
+    number_sections: TRUE
+---
+```
+
+This report has three parameters: current_continent, year and data_file.
+
+We wish to produce a report for each continent for a given year, so it natural that we have continent and year as parameters. The parameter data_file has the name of the excel file with raw HIV prevalence.
+
+You can use any R objects as parameters by specifying the value using an R expression. For example, to specify a date or date-time you could use this code:
+
+```{r eval=F}
+---
+title: My Document
+output: html_document
+params:
+  start: !r as.Date("2015-01-01")
+  snapshot: !r as.POSIXct("2015-01-01 12:30:00")
+---
+```
+
+Note that the date and date-time values are preceded by !r, which indicates that the value is an R expression rather than a literal value.
+
+To refer to the parameter in the report you use the `params$` followed by the parameter name. For example `params$current_continent`, `params$year`, etc.
+
+The code in "hiv_report.Rmd" will use `params$current_continent` instead of a specific continent name and `params$year` instead of a specific number. The value of these objects will be the one declared in the YAML header.
+
+How to change the parameter values? We can do this by hand, that is editing the YAML header. Or we can override the default parameters in the YAML header externally as follows. The function `render()` is from the `rmarkdown` package which loads automatically for you.
+
+Suppose we want to produce the report for Africa for 2010 using the data in the file "hiv_wb.xlsx". We can run the following chunk:
+
+```{r chunk77, eval=F}
+render("hiv_report.Rmd", params = list(
+  current_continent = "Africa",
+  year = 2010,
+  data_file = "hiv_wb.xlsx"
+))
+```
+
+Since `year = 2010` and `data_file = hiv_wb.xlsx` are the current default values in "hiv_report.Rmd" we could have just run
+
+```{r chunk78, eval=F}
+render("hiv_report.Rmd", params = list(
+  current_continent = "Africa"
+  ))
+```
+
+Run the following code to render all four reports for year 2010 with the data in "hiv_wb.xlsx". We are creating a new function called `render_report()` which takes on a single argument, `continent`. The function will create a new file, for Africa the file will be named "Africa_2010_report.html". Note the function doesn't return any R objects, we say it returns "nothing". The function `walk()` from the `purrr` package applies a function to each entry of a vector or list and returns "nothing".
+
+```{r chunk79, message = FALSE, warning = FALSE, eval = FALSE}
+continents <- c("Asia", "Europe", "Africa", "Americas")
+year <- 2010
+#
+render_report <- function(continent) {
+  rmarkdown::render("hiv_report.Rmd", 
+                    output_file = paste0(continent, "_", year, "_report", ".html"),
+                    params = list(current_continent = continent), 
+                    output_options = list(self_contained = FALSE, lib_dir = "libs"))
+}
+
+purrr::walk(continents, render_report)
+```
+
+We could also write a function depending on three arguments, continent, year and data file.
+
+```{r chunk80}
+render_report_3args <- function(continent, YEAR, dataFile) {
+  rmarkdown::render("hiv_report.Rmd", 
+                    output_file = paste0(continent, "_", YEAR, "_report", ".html"),
+                    params = list(current_continent = continent, year = YEAR, data_file = dataFile), 
+                    output_options = list(self_contained = FALSE, lib_dir = "libs"))
+}
+```
+
+The argument we iterate over is "continent". "YEAR" and "dataFile" are extra arguments, not to be iterated over. These extra arguments are added as extra arguments after the function argument in `map()`.
+For example, suppose that we want the four reports for year 2009 with raw data in file "hiv_wb.xlsx"
+
+```{r chunk81, message=FALSE, warning=FALSE, eval=F}
+continents <- c("Asia", "Europe", "Africa", "Americas")
+#
+purrr::walk(continents, render_report_3args, YEAR = 2008, dataFile = "hiv_wb.xlsx")
+```
+
+When we write a function that we envisage we are going to be using a lot, it is best to write it in a separate file (a text file). In order to make it available we need to `source()` the file.
+
+The file "render_report.R" contains the script for the function `render_report()` which is the same as the function `render_report_3args()` we defined above.
+
+In order to use it, we first "source" it, i.e. R will read the contents of the file and create the function `render_report()` and make it ready to use.
+
+```{r chunk82}
+source("render_report.R")
+```
+
+To use the function
+
+```{r chunk83, eval=F}
+render_report("Americas", 2007, "hiv_wb.xlsx")
+```
+
+
+To create all four reports for 2005 with hiv_wb.xlsx
+
+```{r chunk84, eval=F}
+walk(continents, render_report, YEAR = 2005, dataFile = "hiv_wb.xlsx")
+```
+
+<br>
+<br>
+
+**EXERCISE**
+
+A new data file, "hiv_wb_new.xlsx", is available with updated information up to 2011. 
+Produce all four reports for 2011 using the new data file.
+
+Also, the report for Africa should contain the following conclusion "These are the conclusions for Africa in 2011".
+
+<br>
+<br>
+
+## Parameter user interfaces
+
+We can provide a user-interface for specifying parameter values.
+
+Adding the `params = "ask"` argument to the `render()` call then a user-interface is provided to specify the parameter values. 
+Let us try this out.
+
+```{r eval=F}
+rmarkdown::render("hiv_report.Rmd", 
+                  output_file = "Europe_2006_report.html",
+                  params = "ask")
+```
+
+<br>
+
+<br>
+
+The user interface is generated by Shiny and so we can use standard Shiny input controls. Inputs can be customised by adding the appropriate values to the YAML parameters. 
+
+Make sure that the file "hiv_report.Rmd" is saved (you know that there are unsaved changes if the name of the file appears in red in the tabs at the top of the page). Click "File" -> "Save as" in the top menu and save the file as "hiv_report_shiny_parameters" (the .Rmd will be added automatically for you).
+
+Now edit the YAML header so that it looks like (we are changing the "params" field)
+
+```{r eval=F}
+---
+params: 
+  continent:
+    label: "Continent:"
+    value: Africa
+    input: select
+    choices: [Africa, Americas, Asia, Europe]
+  data_file: 
+    label: "Input dataset:"
+    value: hiv_wb.xlsx
+    input: file
+  year: 
+    label: "Year:"
+    value: 2000
+    input: numeric
+    min: 2000
+    max: 2020
+    step: 1
+title: "**`r paste0('Report on HIV prevalence in ', params$current_continent, ' - ', params$year)`**"
+author: Sonia Mazzi - Data Science Campus
+description: "An example of a reproducible report, from data importing, tidying, and cleaning, analysing to publishing with rmarkdown"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  html_document:
+    theme: cosmo
+    toc: TRUE
+    toc_float: TRUE
+    highlight: haddock
+    number_sections: TRUE
+---
+```
+
+Now render the report and make RStudio ask you to input the parameters. Generate the report for Asia in 2005.
+
+```{r eval =F}
+rmarkdown::render("hiv_report_shiny_parameters.Rmd", params = "ask")
+```
+
+
+When previewing an R Markdown document within RStudio you can use the "Knit with Parameters" command (available from the "Knit" drop-down menu) to specify parameters prior to previewing.
+
+<br>
+<br>
+
+The type of Shiny function used is controlled by the input field. The following input types are currently supported (see the help for the associated Shiny function for additional attributes which can be specified to customize the input):
+
+
+Input Type |	Shiny Function
+-----------|----------------
+checkbox   |	[checkboxInput](https://shiny.rstudio.com/reference/shiny/latest/checkboxInput.html) 
+numeric	   |  [numericInput](https://shiny.rstudio.com/reference/shiny/latest/numericInput.html)
+slider	   |  [sliderInput](https://shiny.rstudio.com/reference/shiny/latest/sliderInput.html) 
+date	     |  [dateInput](https://shiny.rstudio.com/reference/shiny/latest/dateInput.html) 
+text	     |  [textInput](https://shiny.rstudio.com/reference/shiny/latest/textInput.html) 
+file	     |  [fileInput](https://shiny.rstudio.com/reference/shiny/latest/fileInput.html) 
+radio	     |  [radioButtons](https://shiny.rstudio.com/reference/shiny/latest/radioButtons.html) 
+select	   |  [selectInput](https://shiny.rstudio.com/reference/shiny/latest/selectInput.html) 
+password	 |  [passwordInput](https://shiny.rstudio.com/reference/shiny/latest/passwordInput.html) 
+
+Note that attributes provided for parameters are automatically passed as arguments to the respective Shiny input functions listed above.
+
+
+
+
+
+
+
+
+
+
+
+
