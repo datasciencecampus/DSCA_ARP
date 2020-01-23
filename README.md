@@ -1,5 +1,5 @@
 # ARP
-A repo to deposit teaching materials for Automated Report Production with RStudio
+A repo to deposit teaching materials for Automated Report Production with RStudio.
 
 **Description**
 
