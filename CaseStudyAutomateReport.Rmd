@@ -29,9 +29,9 @@ knitr::opts_chunk$set(echo = TRUE)
 # Objectives and pre-requisites
 
 This case study is an example of a reproducible workflow.
-We will follow the data science workflow: reflect, collect data, prepare data, analyse, report. In tis case study, we will stay within a system, RStudio, for the entire flow.
+We will follow the data science workflow: reflect, collect data, prepare data, analyse, report. In this case study, we will stay within a system, RStudio, for the entire flow.
 
-We would like to produce reports, by continent, on the status of HIV prevalence using the latest available data. 
+We would like to produce reports, by continent, on a given year, on the status of HIV prevalence using the latest available data. 
 
 Using data from Gapminder on HIV prevalence by country and year, together with other geographical and economic information, we will produce a single 
 R markdown script that can generate reports on HIV prevalence for the different continents for different years and possibly using updated data sources. If new data arrives the same script can be used to update the report with the new information. The generated reports will be in HTML format as this is accessible and available to anyone with access to a web browser.
@@ -55,7 +55,7 @@ All pre-requisites are taught at the required level in "Data Science with R".
 The following skills are needed: (we will learn about these in this workshop)
 
 * Using R markdown: understanding the YAML header of a R Markdown document and how one can specify parameters here that the document will depend on. 
-For more information on R Markdown see [R Markdown: The definitive guide](https://bookdown.org/yihui/rmarkdown/html-document.html).
+For more information on R Markdown see [R Markdown: The definitive guide](https://bookdown.org/yihui/rmarkdown/html-document.html). Also, the chapter on R markdown in Hadley Wickham's [R for Data Science](https://r4ds.had.co.nz/r-markdown.html) is informative. 
 
 
 * Using functional programming: we will learn how to use the function(al)s `map()` and `walk()` from the package `purrr` to apply a function to the entries of a vector or a list. This will be useful when we read the data in and also to generate all the reports, one per continent, at once. We also use conditional `if`-statements to add information to the report depending on the current parameters. `ifelse` statements are also used.
@@ -84,6 +84,125 @@ library(kableExtra)
 library(DT)
 ```
 
+# A quick function writing primer
+
+Generally, a function, $f$, is a transformation such that when applied to the object $x$ it returns the new object $y=f(x)$. 
+
+For example, let $f$ be the transformation so that when applied to a real number it returns the double of the number.
+In R we would create a function object like this
+
+```{r}
+double_up <- function(x){ 2*x }
+```
+
+Now the function `double_up` has been created and it can be used
+
+```{r}
+double_up(10)
+```
+
+When applied to a vector, `double_up()` would return a vector with the value of each entry equal to the double of the value of the original entry.
+
+```{r}
+aux <- 1:10
+double_up(aux)
+```
+
+We will use `double_up()` to illustrate "for" loops and also basic functional programming.
+
+We can use a "for loop" to apply a function to each element of `aux`
+
+```{r}
+double_aux <- 0
+
+for (i in 1:10){
+  double_aux[i] <- double_up(aux[i])
+}
+
+double_aux
+```
+
+## Functional programming
+
+Please, check the chapter about Functional Programming in Hadley Wickham's 
+[Advanced R](http://adv-r.had.co.nz/Functional-programming.html)
+
+<br>
+A functional is also a function, but its argument is a function (so, in a way, a functional is a function of a function). The package `purrr` has a variety of functionals, which mainly differ by the type of object output they give. These functionals have two arguments: one is a vector or a list and the other one is a function. What the functional will do is apply the function to each element of the vector or list and organise the output according to the type of functional you are using. 
+
+For example, `map_dbl` takes on values on a numeric vector and organises the output in a numeric vector.
+
+```{r}
+map_dbl(aux, double_up)
+```
+
+The output of the functional `map()` is a list.
+
+```{r}
+purrr::map(aux, double_up)
+```
+
+The functional `map_df()` gives out a data frame. If we try using the function `double_up()` as it is, it will give an error. Try it
+
+```{r eval=FALSE}
+purrr::map_df(aux, double_up)
+```
+
+The problem is that the output of `double_up()` is not a data frame.
+Let us change that.
+
+```{r}
+double_up <- function(x){ data_frame(2*x) }
+```
+
+```{r}
+map_df(aux, double_up)
+```
+
+If we wanted to apply `double_up()` to a data frame and return a data frame, we use `map_dfc()`: the function will be applied to each column of the data frame and the resulting data frames will be bound by column.
+
+```{r}
+map_dfc(data_frame(1:10, 11:20), double_up)
+```
+
+**EXERCISE.** Write a function that when applied to a vector it returns the square root of the sum of squares of the vector entries. Call it `ssq`. Then apply the function to the data frame `data_frame(a = 1:10, b = 11:20, c = 21:30)`. Think about the output of `ssq()`. Solution is below but try to find a solution on your own before looking at the solution.
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+<br>
+
+
+```{r}
+ssq <- function(z){sqrt(sum(z^2))}
+map_dbl(data_frame(a = 1:10, b = 11:20, c = 21:30), ssq)
+```
+
 
 
 # Importing the data
@@ -95,7 +214,9 @@ This is clearly an Excel file. Let us explore it first.
 Is this just one table or several tables arranged in a workbook?
 
 ```{r chunk1}
+#put the name of the file in an object called fn
 fn <- "hiv_wb.xlsx"
+#get the names of the sheets in workbook fn
 excel_sheets(fn)
 ```
 
@@ -104,7 +225,7 @@ There are many sheets in this workbook. Seemingly one sheet per year.
 Let us explore the 2010 sheet (first sheet)
 
 ```{r chunk2}
-hiv_2010 <- read_excel(fn, sheet=1)
+hiv_2010 <- read_excel(fn, sheet = 1)
 head(hiv_2010)
 ```
 
@@ -118,6 +239,7 @@ Let us read the data in again.
 hiv_2010 <- read_excel(fn, sheet = 1, skip = 4, trim_ws = TRUE)
 head(hiv_2010)
 ```
+
 When we skip the first four rows the data reads in  well (as numeric).
 
 Now we will read in all worksheets and combine them into a single table, stacking the tables for each year. We use the `map_df()` function from the `purrr` package in the Tidyverse. 
@@ -133,31 +255,35 @@ which imports the sheet .x as a tibble and appends to it a new column called yea
 ```{r chunk4}
 #excel workbook file name
 fn <- "hiv_wb.xlsx"
+```
 
+The function we wish to apply to each worksheet name
+
+```{r chunk5}
+read_function <- function(x){
+  read_excel(fn, sheet = x, skip = 4, trim_ws = TRUE) %>% 
+    mutate(year = as.integer(x)) %>%
+    select(country, year, everything()) # this shuffles columns
+  }
+```
+
+```{r chunk6}
+combined_data <- excel_sheets(fn) %>% 
+map_df(read_function)
+```
+
+Alternatively, we can also use the "anonymous function" approach:
+
+```{r eval=FALSE}
 combined_data <- 
   excel_sheets(fn) %>% 
   map_df(~{read_excel(fn, sheet = .x, skip = 4, trim_ws = TRUE) %>% mutate(year = as.integer(.x))}) %>% 
   select(country, year, everything()) #this shuffles columns
 ```
 
-The "~" before the function that is applied in `map_df()` denotes an "anonymous function" in this case it denotes the function `some_function()`:
+The "~" before the function that is applied in `map_df()` denotes an "anonymous function" in this case it denotes the same function as `read_function()` but it not named, so it is not permanently created as an R object. Note how the argument of the anonymous function is `.x`. That is fixed, it cannot be any other way. The argument for a named function can be any letter or phrase.
 
-```{r chunk5, eval=F}
-some_function <- function(.x){
-  read_excel(fn, sheet = .x, skip = 4, trim_ws = TRUE) %>% 
-    mutate(year = as.integer(.x))
-  }
-```
-
-By using the "~" we just need to specify the actions of the function, simplifying the notation.
-
-Alternatively, after creating the function `some_function()` we can obtain `combined_data` by
-
-```{r chunk6, eval=F}
-combined_data <- excel_sheets(fn) %>% 
-map_df(some_function)
-```
-
+By using the "~" we just need to specify the actions of the function, reducing the amount of objects created. Using a "named function" makes the code more legible.
 
 Let us explore `combined_data`.
 
@@ -174,7 +300,6 @@ Variables are  `year`, `hiv_prevalence`, `income` and `population`.
 This data set is in tidy format.
 
 # Data preparation
-
 
 We would like to add geographical information about the  countries, such as continent, region, standard three letter acronym, etc..
 
@@ -352,7 +477,7 @@ world_map %>%
   unique() # eliminate duplicates
 ```
 
-In the list of contries of world_map (`africa_map`),
+In the list of countries of world_map (`africa_map`),
 "Democratic Republic of the Congo" is "Congo, Dem. Rep."
 "Republic of Congo" is "Congo, Rep.",     
 "Ivory Coast" is "Cote d'Ivoire".
@@ -371,7 +496,7 @@ for (i in 1:length(diff_names)){
 ```
 
 One country is missing from `hiv_full` which is in `world_map`, namely "Western Sahara".
-Libya has missing data for hiv prevalence so we will copy the data for Lybia and modify the `geo` (geo for Western Sahara is "esh"), `income`, `population`, and `country`.
+Libya has missing data for hiv prevalence so we will copy the data for Libya and modify the `geo` (geo for Western Sahara is "esh"), `income`, `population`, and `country`.
 
 ```{r chunk23}
 western_sahara <- hiv_full %>% 
@@ -615,7 +740,7 @@ world_map %>%
   geom_polygon(aes(x = long, y = lat, group = group), color = "black", fill = "green") + 
   coord_quickmap()
 ```
-Let us bound longitude to be greater than or equal to 20 (and ignore some of the polynesian islands).
+Let us bound longitude to be greater than or equal to 20 (and ignore some of the Polynesian islands).
 
 ```{r chunk40}
 world_map %>%
