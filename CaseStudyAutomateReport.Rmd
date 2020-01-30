@@ -113,7 +113,7 @@ We will use `double_up()` to illustrate "for" loops and also basic functional pr
 We can use a "for loop" to apply a function to each element of `aux`
 
 ```{r}
-double_aux <- 0
+double_aux <- 0#this is the output vector
 
 for (i in 1:10){
   double_aux[i] <- double_up(aux[i])
@@ -152,7 +152,7 @@ The problem is that the output of `double_up()` is not a data frame.
 Let us change that.
 
 ```{r}
-double_up <- function(x){ data_frame(2*x) }
+double_up <- function(x){ tibble(2*x) }
 ```
 
 ```{r}
@@ -162,10 +162,12 @@ map_df(aux, double_up)
 If we wanted to apply `double_up()` to a data frame and return a data frame, we use `map_dfc()`: the function will be applied to each column of the data frame and the resulting data frames will be bound by column.
 
 ```{r}
-map_dfc(data_frame(1:10, 11:20), double_up)
+map_dfc(tibble(1:10, 11:20), double_up)
 ```
 
-**EXERCISE.** Write a function that when applied to a vector it returns the square root of the sum of squares of the vector entries. Call it `ssq`. Then apply the function to the data frame `data_frame(a = 1:10, b = 11:20, c = 21:30)`. Think about the output of `ssq()`. Solution is below but try to find a solution on your own before looking at the solution.
+**EXERCISE.** Write a function that when applied to a vector it returns the square root of the sum of squares of the vector entries. Call it `ssq`. 
+Then apply the function to the data frame `tibble(a = 1:10, b = 11:20, c = 21:30)`. Think about the output of `ssq()`. Solution is below but try to find a solution on your own before looking at the solution.
+
 
 <br>
 
@@ -593,7 +595,7 @@ Kosovo is missing from `hiv_full` Let us add it. "xkx" is its three letter acron
 kosovo <- hiv_full %>% 
   filter(country == "Libya") %>%
   mutate(geo = str_replace(geo, "lby", "xkx")) %>%
-  mutate(continent == "Europe") %>%
+  mutate(continent = str_replace(continent, "Africa", "Europe")) %>%
   mutate(income = NA) %>%
   mutate(population = NA) %>%
   mutate(cen_Latitude = NA) %>%
@@ -605,6 +607,10 @@ Now let us add the data for Kosovo to `hiv_full`.
 
 ```{r chunk30}
 hiv_full <- bind_rows(hiv_full, kosovo)
+```
+
+```{r}
+hiv_full %>% filter(country == "Kosovo")
 ```
 
 
@@ -801,8 +807,7 @@ This is the data for countries with high hiv prevalence (greater than 10%)
 
 ```{r chunk44}
 hlhiv <- hiv_full %>% 
-  filter(continent == current_continent, year == latest_year, hiv_prevalence >= hi_hiv) %>% 
-  drop_na()
+  filter(continent == current_continent, year == latest_year, hiv_prevalence >= hi_hiv)
 hlhiv
 ```
 
@@ -1583,6 +1588,36 @@ password	 |  [passwordInput](https://shiny.rstudio.com/reference/shiny/latest/pa
 
 Note that attributes provided for parameters are automatically passed as arguments to the respective Shiny input functions listed above.
 
+# Govdown style
+
+Govdown is an R package for creating websites and standalone HTML pages that use the GOV.UK Design System. 
+
+For more information see https://ukgovdatascience.github.io/govdown/
+
+In order to use the official UK R markdown government style, you need to **install the R package `govdown`**.
+ Then simply change the YAML header: state "output: govdown::govdown_document" instead of "output: html_document". There are other options too, such as including a logo (but the image must be in svg format), a general title in the top banner, etc.
+ 
+ An example is given in the file "hiv_report_govdown.html". This will give the same reports as "hiv_report.Rmd" but with the GOV.UK style. Experiment with this file!
+ 
+Please, note that you ust load the library `govdown` before you render the file. So, the best way to do this is to render using, for example,
+
+```{r eval=FALSE}
+library(govdown)
+rmarkdown::render("hiv_report_govdown.Rmd", 
+                  output_file = "Europe_2006_report.html",
+                  params = "ask")
+```
+
+or any of the other render variants we saw above.
+
+# Publishing in the web govdown style
+
+To come soon.
+
+
+<br>
+
+<br>
 
 
 

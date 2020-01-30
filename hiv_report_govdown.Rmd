@@ -5,17 +5,15 @@ params:
   data_file: hiv_wb.xlsx
 title: "**`r paste0('Report on HIV prevalence in ', params$current_continent, ' - ', params$year)`**"
 author: Sonia Mazzi - Data Science Campus
-description: "An example of a reproducible report, from data importing, tidying, and cleaning, analysing to publishing with rmarkdown"
+description: "An example of a reproducible report, from data importing, tidying, and cleaning, analysing to publishing with rmarkdown with govdown style. Note author is ignored in government publications."
 date: "`r format(Sys.Date(), '%d %B %Y')`"
-output:
-  html_document:
-    theme: cosmo
-    toc: TRUE
-    toc_float: TRUE
-    highlight: haddock
-    number_sections: TRUE
+output: 
+  govdown::govdown_document:
+    title: "Report series on HIV prevalence"
+    logo: "dsclogo.svg"
+    logo_text: "" 
+    feedback_url: "https://github.com/datasciencecampus/ARP/issues" 
 ---
-
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
@@ -361,7 +359,7 @@ table1 <- hiv_full %>%
 datatable(table1, rownames=F)
 ```
 
-
+```
 
 
 # Conclusions
@@ -374,12 +372,4 @@ datatable(table1, rownames=F)
 
 `r if(current_continent == "Africa"){"This will only print if continent is Africa."}`
 
-<br>
 
-<br>
-
-***
-
-<center>
- ![](dsclogo.png){width=20%}   
-</center>
