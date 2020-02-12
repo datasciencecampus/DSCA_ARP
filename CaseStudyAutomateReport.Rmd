@@ -362,7 +362,7 @@ $prevalence/lag(prevalence) - 1$. So, we add the  column `pct_chg_prevalence` to
   group_by(country) %>% 
   arrange(year, .by_group = TRUE) %>%
   mutate(pct_chg_prevalence = ifelse( lag(hiv_prevalence) != 0, ((hiv_prevalence/lag(hiv_prevalence) - 1) * 100), NA)) %>%
-  ungroup
+  ungroup()
 ```
 
 
@@ -692,7 +692,7 @@ This is the list of countries of Asia from the `hiv_full` object.
 asian_countries_raw <- hiv_full %>% 
   filter(continent == "Asia") %>%
   pull(country) %>% 
-  unique %>% 
+  unique() %>% 
   sort()
 
 asian_countries_raw
