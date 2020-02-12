@@ -41,6 +41,6 @@ All pre-requisites are taught at the required level in "Data Science with R" htt
 
 # Intended audience
 
-This course is of intermediate to advanced level and it is intended for practitioners working in the UK government who have an interest in applying the taught material to their day-to-day work.
+This course is of intermediate level and it is intended for practitioners working in the UK government who have an interest in applying the taught material to their day-to-day work.
 
 
