@@ -1,19 +1,24 @@
 # Automated Report Production with R
 ### Version 1.0
 
-**Course Summary**
+**Course Summary**  
+
 R is a powerful tool for data analysis and, when coupled with RStudio, the reproducibility feature of coding is further enhanced. Using RStudio and literate programming it is possible to automate the production of reports, replacing tedious and non-reproducible practices of copying and pasting.
 
-**Learning Objective**
+**Learning Objective**  
+
 R users will improve their skills using R markdown to produce automated reports based upon their analyses. Learners will inderstand hw to 'paramaterize' their markdown reports, reducing the need for manual adjustments. Learners will explore the diffreent options for presentation of output to stakeholders.
 
-**Lead Developer**
+**Lead Developer**  
+
 Sonia Mazzi
 
-**Course Reviewer(s)**
+**Course Reviewer(s)**  
+
 Pending
 
-**Intended Audience**
+**Intended Audience**  
+
 This course is of intermediate level and it is intended for practitioners working in the UK government who have an interest in applying the taught material to their day-to-day work.
  
 
@@ -37,10 +42,12 @@ In this course you will
 * Self learning - Not Available
 * Face to face - Available
 
-**Skill Level**
+**Skill Level**  
+
 Intermediate R user.
 
-**Pre requisite summary** 
+**Pre requisite summary**  
+
 The following are pre-requisites. Know how to import data in Excel format into R (package `readxl`). Understand the concept of tidy data and be confident with the use of the packages `tidyr` and `dplyr` for data wrangling. Know how to use the package `ggplot2` for data visualisation. Be familiar and at ease with literate programming in RStudio. All pre-requisites are taught at the required level in "Data Science with R" https://github.com/datasciencecampus/DSWR
 
 **Description**
