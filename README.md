@@ -5,7 +5,7 @@
 
 R is a powerful tool for data analysis and, when coupled with RStudio, the reproducibility feature of coding is further enhanced. Using RStudio and literate programming it is possible to automate the production of reports, replacing tedious and non-reproducible practices of copying and pasting.
 
-**Learning Objective**  
+**Course Objective**  
 
 R users will improve their skills using R markdown to produce automated reports based upon their analyses. Learners will inderstand hw to 'paramaterize' their markdown reports, reducing the need for manual adjustments. Learners will explore the diffreent options for presentation of output to stakeholders.
 
