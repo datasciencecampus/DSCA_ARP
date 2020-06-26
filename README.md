@@ -1,6 +1,10 @@
 # Automated Report Production with R
 ### Version 1.0
 
+**Course Duration**
+
+6 Hours
+
 **Course Summary**  
 
 R is a powerful tool for data analysis and, when coupled with RStudio, the reproducibility feature of coding is further enhanced. Using RStudio and literate programming it is possible to automate the production of reports, replacing tedious and non-reproducible practices of copying and pasting.
