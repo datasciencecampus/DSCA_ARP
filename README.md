@@ -11,7 +11,7 @@ R is a powerful tool for data analysis and, when coupled with RStudio, the repro
 
 **Course Objective**  
 
-R users will improve their skills using R markdown to produce automated reports based upon their analyses. Learners will inderstand hw to 'paramaterize' their markdown reports, reducing the need for manual adjustments. Learners will explore the diffreent options for presentation of output to stakeholders.
+R users will improve their skills using R markdown to produce automated reports based upon their analyses. Learners will understand how to 'paramaterize' their markdown reports, reducing the need for manual adjustments. Learners will explore the diffreent options for presentation of output to stakeholders.
 
 **Lead Developer**  
 
